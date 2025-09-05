@@ -3,7 +3,7 @@ import { ChevronLeft, Play, Copy, Eye, Settings, Monitor, Smartphone, Globe, Cod
 import { Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { useAuth } from '../../context/AuthContext';
-import VideoJSPlayer from '../../components/VideoJSPlayer';
+import IFrameVideoPlayer from '../../components/IFrameVideoPlayer';
 import StreamingPlayerManager from '../../components/StreamingPlayerManager';
 
 interface PlayerConfig {
@@ -337,8 +337,8 @@ player.play();`,
       case 'universal':
         return (
           <div className="h-48 bg-black rounded-lg overflow-hidden">
-            <VideoJSPlayer
-              src={sampleVideos[0]?.url || liveStreamUrl}
+            <IFrameVideoPlayer
+              src={buildExternalPlayerUrl(sampleVideos[0]?.url) || `/api/players/iframe?stream=${userLogin}_live`}
               title={sampleVideos[0]?.nome || 'Stream ao Vivo'}
               isLive={!sampleVideos[0]}
               autoplay={false}
@@ -350,8 +350,6 @@ player.play();`,
                 uptime: '01:23:45',
                 quality: '1080p'
               }}
-              enableSocialSharing={true}
-              enableViewerCounter={true}
             />
           </div>
         );
@@ -670,8 +668,8 @@ player.play();`,
 
             {/* Player */}
             <div className={`w-full h-full ${isFullscreen ? 'p-0' : 'p-4 pt-16'}`}>
-              <VideoJSPlayer
-                src={previewVideo ? getVideoUrl(previewVideo.url) : undefined}
+              <IFrameVideoPlayer
+                src={previewVideo ? buildExternalPlayerUrl(previewVideo.url) : `/api/players/iframe?stream=${userLogin}_live`}
                 title={previewVideo?.nome}
                 isLive={previewVideo?.id === 0}
                 autoplay={true}
@@ -684,7 +682,7 @@ player.play();`,
                   quality: '1080p'
                 } : undefined}
                 onError={(error) => {
-                  console.error('Erro no Video.js:', error);
+                  console.error('Erro no IFrame:', error);
                   toast.error('Erro ao carregar vídeo');
                 }}
               />
@@ -720,11 +718,11 @@ player.play();`,
           <div>
             <h4 className="font-medium mb-2">Recursos Avançados:</h4>
             <ul className="space-y-1">
-              <li>• <strong>Video.js Player:</strong> Player profissional com recursos avançados</li>
-              <li>• <strong>HLS Nativo:</strong> Suporte completo a streaming adaptativo</li>
-              <li>• <strong>Qualidade Automática:</strong> Seleção automática da melhor qualidade</li>
-              <li>• <strong>Controles Avançados:</strong> Velocidade, qualidade, fullscreen</li>
-              <li>• <strong>Plugins Extensíveis:</strong> Sistema de plugins do Video.js</li>
+              <li>• <strong>Player Externo via iFrame:</strong> Usa o sistema já configurado e funcionando</li>
+              <li>• <strong>Eliminação de Erros:</strong> Sem problemas de compatibilidade ou carregamento</li>
+              <li>• <strong>Performance Otimizada:</strong> Player já otimizado no servidor externo</li>
+              <li>• <strong>Fallback Automático:</strong> Abre em nova aba em caso de problemas</li>
+              <li>• <strong>Compatibilidade Total:</strong> Funciona em todos os navegadores</li>
             </ul>
           </div>
           <div>
@@ -732,8 +730,8 @@ player.play();`,
             <ul className="space-y-1">
               <li>• <strong>HLS:</strong> {getActiveStreamUrl()}</li>
               <li>• <strong>RTMP:</strong> rtmp://samhost.wcore.com.br:1935/samhost/{userLogin}_live</li>
-              <li>• <strong>Video.js:</strong> Player profissional integrado</li>
-              <li>• <strong>Adaptativo:</strong> Qualidade automática baseada na conexão</li>
+              <li>• <strong>Player Externo:</strong> https://domain:1443/play.php</li>
+              <li>• <strong>iFrame:</strong> Incorporação segura e estável</li>
             </ul>
           </div>
         </div>
@@ -746,6 +744,40 @@ player.play();`,
           </div>
         )}
       </div>
+
+      {/* Função auxiliar para construir URL do player externo */}
+      {(() => {
+        window.buildExternalPlayerUrl = (videoPath: string) => {
+          if (!videoPath) return '';
+
+          // Se já é uma URL do player, usar como está
+          if (videoPath.includes('play.php') || videoPath.includes('/api/players/iframe')) {
+            return videoPath;
+          }
+
+          // Extrair informações do caminho
+          const cleanPath = videoPath.replace(/^\/+/, '').replace(/^(content\/|streaming\/)?/, '');
+          const pathParts = cleanPath.split('/');
+          
+          if (pathParts.length >= 3) {
+            const userLogin = pathParts[0];
+            const folderName = pathParts[1];
+            const fileName = pathParts[2];
+            
+            // Garantir que é MP4
+            const finalFileName = fileName.endsWith('.mp4') ? fileName : fileName.replace(/\.[^/.]+$/, '.mp4');
+            
+            // Usar domínio correto baseado no ambiente
+            const domain = window.location.hostname === 'localhost' ? 'stmv1.udicast.com' : 'samhost.wcore.com.br';
+            
+            // Construir URL do player externo
+            return `https://${domain}:1443/play.php?login=${userLogin}&video=${folderName}/${finalFileName}`;
+          }
+          
+          return '';
+        };
+        return null;
+      })()}
 
       {/* Gerenciador de Streaming Avançado */}
       <StreamingPlayerManager

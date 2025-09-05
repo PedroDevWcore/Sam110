@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, PlusCircle, X, Edit2, Trash2, Play, Minimize, Maximize } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useAuth } from '../../context/AuthContext';
-import VideoJSPlayer from '../../components/VideoJSPlayer';
+import IFrameVideoPlayer from '../../components/IFrameVideoPlayer';
 
 import {
   DndContext,
@@ -62,6 +62,36 @@ const Playlists: React.FC = () => {
   const [currentVideoUrl, setCurrentVideoUrl] = useState<string>('');
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  // Função para construir URL do player externo
+  const buildExternalPlayerUrl = (videoPath: string) => {
+    if (!videoPath) return '';
+
+    // Se já é uma URL do player, usar como está
+    if (videoPath.includes('play.php') || videoPath.includes('/api/players/iframe')) {
+      return videoPath;
+    }
+
+    // Extrair informações do caminho
+    const cleanPath = videoPath.replace(/^\/+/, '').replace(/^(content\/|streaming\/)?/, '');
+    const pathParts = cleanPath.split('/');
+    
+    if (pathParts.length >= 3) {
+      const userLogin = pathParts[0];
+      const folderName = pathParts[1];
+      const fileName = pathParts[2];
+      
+      // Garantir que é MP4
+      const finalFileName = fileName.endsWith('.mp4') ? fileName : fileName.replace(/\.[^/.]+$/, '.mp4');
+      
+      // Usar domínio correto baseado no ambiente
+      const domain = window.location.hostname === 'localhost' ? 'stmv1.udicast.com' : 'samhost.wcore.com.br';
+      
+      // Construir URL do player externo
+      return `https://${domain}:1443/play.php?login=${userLogin}&video=${folderName}/${finalFileName}`;
+    }
+    
+    return '';
+  };
   // Modal de confirmação
   const [modalConfirmacao, setModalConfirmacao] = useState({
     aberto: false,
@@ -548,17 +578,9 @@ const Playlists: React.FC = () => {
       setPlaylistVideosToPlay(videos);
       setPlaylistPlayerIndex(0);
       
-      // Obter URL usando nova API
-      const urlResponse = await fetch(`/api/videos/view-url?path=${encodeURIComponent(videos[0].url || '')}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      if (urlResponse.ok) {
-        const urlData = await urlResponse.json();
-        if (urlData.success && urlData.view_url) {
-          setCurrentVideoUrl(urlData.view_url);
-        }
-      }
+      // Construir URL do player externo
+      const playerUrl = buildExternalPlayerUrl(videos[0].url || '');
+      setCurrentVideoUrl(playerUrl);
       
       setVideoPlayerModalOpen(true);
     } catch (error) {
@@ -572,36 +594,16 @@ const Playlists: React.FC = () => {
       const nextIndex = playlistPlayerIndex + 1;
       setPlaylistPlayerIndex(nextIndex);
       
-      // Obter URL do próximo vídeo usando nova API
-      fetch(`/api/videos/view-url?path=${encodeURIComponent(playlistVideosToPlay[nextIndex].url || '')}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('auth_token')}` }
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.success && data.view_url) {
-          setCurrentVideoUrl(data.view_url);
-        }
-      })
-      .catch(error => {
-        console.error('Erro ao obter URL do próximo vídeo:', error);
-      });
+      // Construir URL do próximo vídeo
+      const nextVideoUrl = buildExternalPlayerUrl(playlistVideosToPlay[nextIndex].url || '');
+      setCurrentVideoUrl(nextVideoUrl);
     } else {
       // Repetir playlist do início
       setPlaylistPlayerIndex(0);
       
-      // Obter URL do primeiro vídeo usando nova API
-      fetch(`/api/videos/view-url?path=${encodeURIComponent(playlistVideosToPlay[0].url || '')}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('auth_token')}` }
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.success && data.view_url) {
-          setCurrentVideoUrl(data.view_url);
-        }
-      })
-      .catch(error => {
-        console.error('Erro ao obter URL do primeiro vídeo:', error);
-      });
+      // Construir URL do primeiro vídeo
+      const firstVideoUrl = buildExternalPlayerUrl(playlistVideosToPlay[0].url || '');
+      setCurrentVideoUrl(firstVideoUrl);
     }
   };
 
@@ -610,19 +612,9 @@ const Playlists: React.FC = () => {
       const prevIndex = playlistPlayerIndex - 1;
       setPlaylistPlayerIndex(prevIndex);
       
-      // Obter URL do vídeo anterior usando nova API
-      fetch(`/api/videos/view-url?path=${encodeURIComponent(playlistVideosToPlay[prevIndex].url || '')}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('auth_token')}` }
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.success && data.view_url) {
-          setCurrentVideoUrl(data.view_url);
-        }
-      })
-      .catch(error => {
-        console.error('Erro ao obter URL do vídeo anterior:', error);
-      });
+      // Construir URL do vídeo anterior
+      const prevVideoUrl = buildExternalPlayerUrl(playlistVideosToPlay[prevIndex].url || '');
+      setCurrentVideoUrl(prevVideoUrl);
     }
   };
 
@@ -631,19 +623,9 @@ const Playlists: React.FC = () => {
       const nextIndex = playlistPlayerIndex + 1;
       setPlaylistPlayerIndex(nextIndex);
       
-      // Obter URL do próximo vídeo usando nova API
-      fetch(`/api/videos/view-url?path=${encodeURIComponent(playlistVideosToPlay[nextIndex].url || '')}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('auth_token')}` }
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.success && data.view_url) {
-          setCurrentVideoUrl(data.view_url);
-        }
-      })
-      .catch(error => {
-        console.error('Erro ao obter URL do próximo vídeo:', error);
-      });
+      // Construir URL do próximo vídeo
+      const nextVideoUrl = buildExternalPlayerUrl(playlistVideosToPlay[nextIndex].url || '');
+      setCurrentVideoUrl(nextVideoUrl);
     }
   };
 
@@ -929,21 +911,28 @@ const Playlists: React.FC = () => {
 
             {/* Player Universal */}
             <div className={`w-full h-full ${isFullscreen ? 'p-0' : 'p-4 pt-16'}`}>
-              <VideoJSPlayer
+              <IFrameVideoPlayer
                 src={currentVideoUrl}
                 title={playlistVideosToPlay[playlistPlayerIndex]?.nome}
                 autoplay={true}
                 controls={true}
                 className="w-full h-full"
-                onPlay={() => console.log('Video.js playlist iniciado')}
-                onPause={() => console.log('Video.js playlist pausado')}
-                onEnded={handleVideoEnded}
                 onError={(error) => {
-                  console.error('Erro no Video.js playlist:', error);
+                  console.error('Erro no IFrame playlist:', error);
                   toast.error('Erro ao carregar vídeo');
                 }}
                 onReady={() => {
-                  console.log('Video.js playlist pronto');
+                  console.log('IFrame playlist pronto');
+                }}
+                onLoad={() => {
+                  console.log('IFrame playlist carregado');
+                  // Auto-avançar após duração do vídeo se disponível
+                  const currentVideo = playlistVideosToPlay[playlistPlayerIndex];
+                  if (currentVideo?.duracao) {
+                    setTimeout(() => {
+                      handleVideoEnded();
+                    }, (currentVideo.duracao * 1000) + 5000); // +5s de margem
+                  }
                 }}
               />
             </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useStream } from '../context/StreamContext';
-import VideoJSPlayer from './VideoJSPlayer';
+import IFrameVideoPlayer from './IFrameVideoPlayer';
 
 interface VideoPlayerProps {
   playlistVideo?: {
@@ -62,15 +62,47 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   // Determinar fonte de vídeo
   const getVideoSource = () => {
     if (playlistVideo?.url) {
-      return playlistVideo.url;
+      // Construir URL do player externo
+      return buildExternalPlayerUrl(playlistVideo.url);
     } else if (streamData.isLive) {
-      return `http://samhost.wcore.com.br:1935/samhost/${userLogin}_live/playlist.m3u8`;
+      // Para stream ao vivo, usar iframe do player
+      return `/api/players/iframe?stream=${userLogin}_live&aspectratio=16:9&player_type=1&autoplay=false`;
     } else if (obsStreamActive) {
-      return obsStreamUrl;
+      return `/api/players/iframe?stream=${userLogin}_live&aspectratio=16:9&player_type=1&autoplay=false`;
     }
     return '';
   };
 
+  // Construir URL do player externo baseada no padrão fornecido
+  const buildExternalPlayerUrl = (videoPath: string) => {
+    if (!videoPath) return '';
+
+    // Se já é uma URL do player, usar como está
+    if (videoPath.includes('play.php') || videoPath.includes('/api/players/iframe')) {
+      return videoPath;
+    }
+
+    // Extrair informações do caminho
+    const cleanPath = videoPath.replace(/^\/+/, '').replace(/^(content\/|streaming\/)?/, '');
+    const pathParts = cleanPath.split('/');
+    
+    if (pathParts.length >= 3) {
+      const userLogin = pathParts[0];
+      const folderName = pathParts[1];
+      const fileName = pathParts[2];
+      
+      // Garantir que é MP4
+      const finalFileName = fileName.endsWith('.mp4') ? fileName : fileName.replace(/\.[^/.]+$/, '.mp4');
+      
+      // Usar domínio correto baseado no ambiente
+      const domain = window.location.hostname === 'localhost' ? 'stmv1.udicast.com' : 'samhost.wcore.com.br';
+      
+      // Construir URL do player externo
+      return `https://${domain}:1443/play.php?login=${userLogin}&video=${folderName}/${finalFileName}`;
+    }
+    
+    return '';
+  };
   const getVideoTitle = () => {
     return playlistVideo?.nome || 
       (streamData.isLive ? streamData.title || 'Transmissão ao Vivo' : 
@@ -80,25 +112,27 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const isLive = !playlistVideo && (streamData.isLive || obsStreamActive);
 
   return (
-    <VideoJSPlayer
+    <IFrameVideoPlayer
       src={getVideoSource()}
       title={getVideoTitle()}
       isLive={isLive}
       autoplay={autoplay}
       controls={controls}
       className={`${className} ${height}`}
-      onEnded={onVideoEnd}
       onError={(error) => {
-        console.error('Erro no Video.js player:', error);
+        console.error('Erro no IFrame player:', error);
       }}
       onReady={() => {
-        console.log('Video.js player pronto');
+        console.log('IFrame player pronto');
       }}
-      onPlay={() => {
-        console.log('Video.js player iniciado');
-      }}
-      onPause={() => {
-        console.log('Video.js player pausado');
+      onLoad={() => {
+        console.log('IFrame player carregado');
+        // Simular onVideoEnd após duração do vídeo se necessário
+        if (playlistVideo?.duracao && onVideoEnd) {
+          setTimeout(() => {
+            onVideoEnd();
+          }, (playlistVideo.duracao * 1000) + 5000); // +5s de margem
+        }
       }}
       streamStats={isLive ? {
         viewers: Math.floor(Math.random() * 50) + 5,

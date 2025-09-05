@@ -3,7 +3,7 @@ import { ChevronLeft, Upload, Play, Trash2, FolderPlus, Video, Eye, EyeOff, Refr
 import { Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { useAuth } from '../../context/AuthContext';
-import VideoJSPlayer from '../../components/VideoJSPlayer';
+import IFrameVideoPlayer from '../../components/IFrameVideoPlayer';
 
 interface Video {
   id: number;
@@ -469,8 +469,21 @@ const GerenciarVideos: React.FC = () => {
       return;
     }
 
-    // Construir URL direta baseada no padrão fornecido
-    const cleanPath = video.url.replace(/^\/+/, '').replace(/^(content\/|streaming\/)?/, '');
+    // Usar função auxiliar para construir URL
+    const directUrl = buildExternalPlayerUrl(video.url);
+    if (directUrl) {
+      window.open(directUrl, '_blank');
+    } else {
+      toast.error('Não foi possível construir URL do vídeo');
+    }
+  };
+
+  // Função auxiliar para construir URL do player externo
+  const buildExternalPlayerUrl = (videoPath: string) => {
+    if (!videoPath) return '';
+
+    // Extrair informações do caminho
+    const cleanPath = videoPath.replace(/^\/+/, '').replace(/^(content\/|streaming\/)?/, '');
     const pathParts = cleanPath.split('/');
     
     if (pathParts.length >= 3) {
@@ -479,16 +492,13 @@ const GerenciarVideos: React.FC = () => {
       const fileName = pathParts[2];
       
       const finalFileName = fileName.endsWith('.mp4') ? fileName : fileName.replace(/\.[^/.]+$/, '.mp4');
-      const isProduction = window.location.hostname !== 'localhost';
-      const domain = isProduction ? 'samhost.wcore.com.br' : 'stmv1.udicast.com';
+      const domain = window.location.hostname === 'localhost' ? 'stmv1.udicast.com' : 'samhost.wcore.com.br';
       
-      const directUrl = `https://${domain}:1443/play.php?login=${userLogin}&video=${folderName}/${finalFileName}`;
-      window.open(directUrl, '_blank');
-    } else {
-      toast.error('Formato de URL inválido');
+      return `https://${domain}:1443/play.php?login=${userLogin}&video=${folderName}/${finalFileName}`;
     }
+    
+    return '';
   };
-
   const downloadVideo = (video: Video) => {
     // Usar mesma lógica do openVideoInNewTab para download
     openVideoInNewTab(video);
@@ -527,9 +537,10 @@ const GerenciarVideos: React.FC = () => {
   useEffect(() => {
     if (!currentVideo) return;
 
-    // Usar URL direta do vídeo
-    setVideoUrl(currentVideo.url);
-    setVideoHlsUrl(currentVideo.url);
+    // Construir URL do player externo
+    const playerUrl = buildExternalPlayerUrl(currentVideo.url);
+    setVideoUrl(playerUrl);
+    setVideoHlsUrl(playerUrl);
   }, [currentVideo]);
 
 
@@ -1122,31 +1133,28 @@ const GerenciarVideos: React.FC = () => {
 
             {/* Player HTML5 com URL direta do Wowza */}
             <div className={`w-full h-full ${isFullscreen ? 'p-0' : 'p-4 pt-16'}`}>
-              <VideoJSPlayer
-                src={currentVideo.url}
+              <IFrameVideoPlayer
+                src={videoUrl}
                 title={currentVideo.nome}
                 autoplay
                 controls
                 className="w-full h-full"
-                onPlay={() => console.log('Video.js iniciado')}
-                onPause={() => console.log('Video.js pausado')}
-                onEnded={() => console.log('Video.js finalizado')}
                 onError={(error) => {
-                  console.error('Erro no Video.js:', error);
+                  console.error('Erro no IFrame player:', error);
                   // Fallback: abrir em nova aba
                   openVideoInNewTab(currentVideo);
                 }}
                 onReady={() => {
-                  console.log('Video.js pronto para reprodução');
+                  console.log('IFrame player pronto para reprodução');
                 }}
               />
             </div>
 
             {/* Informações técnicas */}
             <div className="absolute bottom-4 left-4 z-20 bg-black bg-opacity-60 text-white px-3 py-2 rounded-lg text-xs">
-              <p>Player: Video.js (Profissional)</p>
+              <p>Player: Externo via iFrame</p>
               <p>URL: https://domain:1443/play.php</p>
-              <p>Formato: HLS/MP4 Adaptativo</p>
+              <p>Formato: Player Externo Otimizado</p>
             </div>
           </div>
         </div>
@@ -1159,7 +1167,7 @@ const GerenciarVideos: React.FC = () => {
           <div>
             <h3 className="text-green-900 font-medium mb-2">🎯 Sistema de Visualização Otimizado</h3>
             <ul className="text-green-800 text-sm space-y-1">
-              <li>• <strong>Video.js Player:</strong> Player profissional com recursos avançados</li>
+              <li>• <strong>Player Externo via iFrame:</strong> Usa o player já configurado e funcionando</li>
               <li>• <strong>Formato padrão:</strong> https://domain:1443/play.php?login=usuario&video=pasta/arquivo.mp4</li>
               <li>• <strong>Análise automática:</strong> Bitrate, codec e resolução detectados automaticamente</li>
               <li>• <strong>Carregamento otimizado:</strong> Dados carregados diretamente do banco</li>
@@ -1167,11 +1175,11 @@ const GerenciarVideos: React.FC = () => {
               <li>• <strong>Sanitização automática:</strong> Nomes de pastas convertidos para minúsculas sem acentos</li>
               <li>• <strong>Performance melhorada:</strong> Menos chamadas de API, carregamento mais rápido</li>
               <li>• <strong>Gerenciamento de pastas:</strong> Criação, edição e exclusão sincronizada com servidor</li>
-              <li>• <strong>Video.js integrado:</strong> Player profissional com HLS nativo</li>
+              <li>• <strong>Player iFrame:</strong> Usa o sistema externo já configurado e testado</li>
               <li>• <strong>Monitoramento de espaço:</strong> Controle em tempo real do uso de armazenamento</li>
               <li>• <strong>Porta padrão:</strong> 1443 para todas as visualizações</li>
-              <li>• <strong>Suporte HLS:</strong> Streaming adaptativo com qualidade automática</li>
-              <li>• <strong>Controles avançados:</strong> Velocidade de reprodução, qualidade, fullscreen</li>
+              <li>• <strong>Sistema externo:</strong> Elimina problemas de compatibilidade e carregamento</li>
+              <li>• <strong>Fallback automático:</strong> Abre em nova aba em caso de erro</li>
             </ul>
           </div>
         </div>

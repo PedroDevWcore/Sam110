@@ -7,7 +7,7 @@ import {
   AlertCircle, CheckCircle, Wifi, WifiOff, Server, HardDrive
 } from 'lucide-react';
 import { toast } from 'react-toastify';
-import VideoJSPlayer from '../../components/VideoJSPlayer';
+import IFrameVideoPlayer from '../../components/IFrameVideoPlayer';
 
 interface DashboardStats {
   totalVideos: number;
@@ -425,20 +425,18 @@ const Dashboard: React.FC = () => {
 
             <div className="aspect-video bg-gray-900 rounded-xl overflow-hidden">
               {showPlayer && currentVideoUrl ? (
-                <VideoJSPlayer
+                <IFrameVideoPlayer
                   src={currentVideoUrl}
                   title={streamStatus?.transmission?.titulo || 'Transmissão ao Vivo'}
                   isLive={streamStatus?.is_live || false}
                   autoplay={false}
                   controls={true}
                   className="w-full h-full"
-                  onPlay={() => console.log('Video.js Dashboard iniciado')}
-                  onPause={() => console.log('Video.js Dashboard pausado')}
                   onError={(error) => {
-                    console.error('Erro no Video.js Dashboard:', error);
+                    console.error('Erro no IFrame Dashboard:', error);
                   }}
                   onReady={() => {
-                    console.log('Video.js Dashboard pronto');
+                    console.log('IFrame Dashboard pronto');
                   }}
                   streamStats={streamStatus?.is_live ? {
                     viewers: streamStatus.transmission?.stats.viewers || streamStatus.obs_stream?.viewers || 0,
@@ -565,8 +563,8 @@ const Dashboard: React.FC = () => {
                     </div>
                     <button
                       onClick={() => {
-                        // Usar Video.js player
-                        setCurrentVideoUrl(video.url);
+                        // Usar IFrame player
+                        setCurrentVideoUrl(buildExternalPlayerUrl(video.url));
                         setShowPlayer(true);
                       }}
                       className="text-blue-600 hover:text-blue-800"
@@ -680,6 +678,37 @@ const Dashboard: React.FC = () => {
       </div>
     </div>
   );
+
+  // Função auxiliar para construir URL do player externo
+  function buildExternalPlayerUrl(videoPath: string): string {
+    if (!videoPath) return '';
+
+    // Se já é uma URL do player, usar como está
+    if (videoPath.includes('play.php') || videoPath.includes('/api/players/iframe')) {
+      return videoPath;
+    }
+
+    // Extrair informações do caminho
+    const cleanPath = videoPath.replace(/^\/+/, '').replace(/^(content\/|streaming\/)?/, '');
+    const pathParts = cleanPath.split('/');
+    
+    if (pathParts.length >= 3) {
+      const userLogin = pathParts[0];
+      const folderName = pathParts[1];
+      const fileName = pathParts[2];
+      
+      // Garantir que é MP4
+      const finalFileName = fileName.endsWith('.mp4') ? fileName : fileName.replace(/\.[^/.]+$/, '.mp4');
+      
+      // Usar domínio correto baseado no ambiente
+      const domain = window.location.hostname === 'localhost' ? 'stmv1.udicast.com' : 'samhost.wcore.com.br';
+      
+      // Construir URL do player externo
+      return `https://${domain}:1443/play.php?login=${userLogin}&video=${folderName}/${finalFileName}`;
+    }
+    
+    return '';
+  }
 };
 
 export default Dashboard;
