@@ -350,8 +350,6 @@ player.play();`,
                 uptime: '01:23:45',
                 quality: '1080p'
               }}
-            />
-          </div>
         );
 
       case 'iframe':
@@ -744,6 +742,40 @@ player.play();`,
           </div>
         )}
       </div>
+
+      {/* Função auxiliar para construir URL do player externo */}
+      {(() => {
+        window.buildExternalPlayerUrl = (videoPath: string) => {
+          if (!videoPath) return '';
+
+          // Se já é uma URL do player, usar como está
+          if (videoPath.includes('play.php') || videoPath.includes('/api/players/iframe')) {
+            return videoPath;
+          }
+
+          // Extrair informações do caminho
+          const cleanPath = videoPath.replace(/^\/+/, '').replace(/^(content\/|streaming\/)?/, '');
+          const pathParts = cleanPath.split('/');
+          
+          if (pathParts.length >= 3) {
+            const userLogin = pathParts[0];
+            const folderName = pathParts[1];
+            const fileName = pathParts[2];
+            
+            // Garantir que é MP4
+            const finalFileName = fileName.endsWith('.mp4') ? fileName : fileName.replace(/\.[^/.]+$/, '.mp4');
+            
+            // Usar domínio correto baseado no ambiente
+            const domain = window.location.hostname === 'localhost' ? 'stmv1.udicast.com' : 'samhost.wcore.com.br';
+            
+            // Construir URL do player externo
+            return `https://${domain}:1443/play.php?login=${userLogin}&video=${folderName}/${finalFileName}`;
+          }
+          
+          return '';
+        };
+        return null;
+      })()}
 
       {/* Função auxiliar para construir URL do player externo */}
       {(() => {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import AdvancedVideoPlayer from './AdvancedVideoPlayer';
+import IFrameVideoPlayer from './IFrameVideoPlayer';
 import PlayerSelector from './PlayerSelector';
 import { Play, Settings, Eye, Share2, Download, Zap, Monitor, Activity } from 'lucide-react';
 
@@ -128,52 +128,56 @@ const StreamingPlayerManager: React.FC<StreamingPlayerManagerProps> = ({
 
   const generatePlayerCode = () => {
     const baseUrl = window.location.origin;
-    const streamUrl = videoUrl || `${baseUrl}/api/players/iframe?stream=${userLogin}_live`;
+    
+    // Construir URL do player externo
+    let playerUrl = '';
+    if (videoUrl) {
+      // Se é um vídeo específico, construir URL do player
+      const cleanPath = videoUrl.replace(/^\/+/, '').replace(/^(content\/|streaming\/)?/, '');
+      const pathParts = cleanPath.split('/');
+      
+      if (pathParts.length >= 3) {
+        const userLogin = pathParts[0];
+        const folderName = pathParts[1];
+        const fileName = pathParts[2];
+        const finalFileName = fileName.endsWith('.mp4') ? fileName : fileName.replace(/\.[^/.]+$/, '.mp4');
+        const domain = window.location.hostname === 'localhost' ? 'stmv1.udicast.com' : 'samhost.wcore.com.br';
+        playerUrl = `https://${domain}:1443/play.php?login=${userLogin}&video=${folderName}/${finalFileName}`;
+      } else {
+        playerUrl = `${baseUrl}/api/players/iframe?stream=${userLogin}_live`;
+      }
+    } else {
+      playerUrl = `${baseUrl}/api/players/iframe?stream=${userLogin}_live`;
+    }
     
     switch (selectedPlayer) {
       case 'html5':
-        return `<!-- Player HTML5 Avançado -->
-<video 
+        return `<!-- Player iFrame Otimizado -->
+<iframe 
+  src="${playerUrl}" 
   width="640" 
   height="360" 
-  controls 
-  ${playerConfig.autoplay ? 'autoplay' : ''}
-  ${playerConfig.muted ? 'muted' : ''}
-  ${playerConfig.loop ? 'loop' : ''}
-  crossorigin="anonymous"
-  preload="metadata"
->
-  <source src="${streamUrl}" type="application/vnd.apple.mpegurl">
-  <source src="${streamUrl}" type="video/mp4">
-  Seu navegador não suporta vídeo HTML5.
-</video>`;
+  frameborder="0" 
+  allowfullscreen
+  allow="autoplay; fullscreen; picture-in-picture">
+</iframe>`;
 
       case 'videojs':
-        return `<!-- Video.js Player -->
-<link href="//vjs.zencdn.net/7.8.4/video-js.css" rel="stylesheet">
-<video 
-  id="videojs-player" 
-  class="video-js vjs-default-skin" 
-  controls 
-  preload="auto" 
+        return `<!-- Player iFrame Responsivo -->
+<iframe 
+  src="${playerUrl}" 
   width="640" 
-  height="360"
-  data-setup='{"fluid": true, "aspectRatio": "${playerConfig.aspectRatio}"}'
->
-  <source src="${streamUrl}" type="application/x-mpegURL">
-</video>
-<script src="//vjs.zencdn.net/7.8.4/video.js"></script>
-<script src="//cdnjs.cloudflare.com/ajax/libs/videojs-contrib-hls/5.12.0/videojs-contrib-hls.min.js"></script>
-<script>
-  var player = videojs('videojs-player', {
-    html5: { hls: { overrideNative: true } }
-  });
-</script>`;
+  height="360" 
+  frameborder="0" 
+  allowfullscreen
+  allow="autoplay; fullscreen; picture-in-picture"
+  style="max-width: 100%; height: auto; aspect-ratio: ${playerConfig.aspectRatio};">
+</iframe>`;
 
       case 'iframe':
         return `<!-- Player iFrame -->
 <iframe 
-  src="${baseUrl}/api/players/iframe?stream=${userLogin}_live" 
+  src="${playerUrl}" 
   width="640" 
   height="360" 
   frameborder="0" 
@@ -182,10 +186,15 @@ const StreamingPlayerManager: React.FC<StreamingPlayerManagerProps> = ({
 </iframe>`;
 
       default:
-        return `<!-- Player Personalizado -->
-<div id="custom-player" style="width: 640px; height: 360px;">
-  <!-- Implementação personalizada aqui -->
-</div>`;
+        return `<!-- Player iFrame Padrão -->
+<iframe 
+  src="${playerUrl}" 
+  width="640" 
+  height="360" 
+  frameborder="0" 
+  allowfullscreen
+  allow="autoplay; fullscreen; picture-in-picture">
+</iframe>`;
     }
   };
 
@@ -424,26 +433,19 @@ const StreamingPlayerManager: React.FC<StreamingPlayerManagerProps> = ({
         </div>
 
         <div className="relative">
-          <AdvancedVideoPlayer
-            src={videoUrl}
+          <IFrameVideoPlayer
+            src={videoUrl ? buildExternalPlayerUrl(videoUrl) : `/api/players/iframe?stream=${userLogin}_live`}
             title={title}
             isLive={isLive}
             autoplay={playerConfig.autoplay}
-            muted={playerConfig.muted}
-            loop={playerConfig.loop}
             aspectRatio={playerConfig.aspectRatio}
-            playerType={selectedPlayer as "videojs" | "clappr" | "jwplayer" | "fluidplayer" | "dplayer" | "html5"}
             streamStats={streamStats}
-            watermark={watermarkConfig.enabled && watermarkConfig.url ? watermarkConfig : undefined}
-            qualityLevels={qualityLevels.length > 1 ? qualityLevels : undefined}
-            socialSharing={socialConfig.enabled ? socialConfig : undefined}
-            viewerCounter={viewerConfig.enabled ? viewerConfig : undefined}
             className="w-full h-96"
-            onQualityChange={(quality) => {
-              console.log(`Qualidade alterada para: ${quality}`);
+            onError={(error) => {
+              console.error('Erro no IFrame player:', error);
             }}
-            onFullscreenChange={(isFS) => {
-              console.log(`Fullscreen: ${isFS}`);
+            onReady={() => {
+              console.log('IFrame player pronto');
             }}
           />
         </div>
@@ -475,7 +477,7 @@ const StreamingPlayerManager: React.FC<StreamingPlayerManagerProps> = ({
             <div>
               <span className="font-medium text-gray-700">URLs de Streaming:</span>
               <ul className="text-gray-600 mt-1 space-y-1">
-                <li>• <strong>HLS:</strong> {`${window.location.origin}/api/players/iframe?stream=${userLogin}_live`}</li>
+                <li>• <strong>Player:</strong> {`https://domain:1443/play.php?login=${userLogin}&video=pasta/arquivo.mp4`}</li>
                 <li>• <strong>RTMP:</strong> {`rtmp://samhost.wcore.com.br:1935/samhost/${userLogin}_live`}</li>
               </ul>
             </div>
@@ -483,11 +485,11 @@ const StreamingPlayerManager: React.FC<StreamingPlayerManagerProps> = ({
             <div>
               <span className="font-medium text-gray-700">Configurações Ativas:</span>
               <ul className="text-gray-600 mt-1 space-y-1">
-                <li>• <strong>Player:</strong> {selectedPlayer}</li>
+                <li>• <strong>Player:</strong> iFrame Externo</li>
                 <li>• <strong>Proporção:</strong> {playerConfig.aspectRatio}</li>
                 <li>• <strong>Autoplay:</strong> {playerConfig.autoplay ? 'Sim' : 'Não'}</li>
-                <li>• <strong>Watermark:</strong> {watermarkConfig.enabled ? 'Sim' : 'Não'}</li>
-                <li>• <strong>Social:</strong> {socialConfig.enabled ? 'Sim' : 'Não'}</li>
+                <li>• <strong>Tipo:</strong> Player Externo</li>
+                <li>• <strong>Domínio:</strong> {window.location.hostname === 'localhost' ? 'stmv1.udicast.com' : 'samhost.wcore.com.br'}</li>
               </ul>
             </div>
           </div>
@@ -502,11 +504,11 @@ const StreamingPlayerManager: React.FC<StreamingPlayerManagerProps> = ({
           <div>
             <h4 className="font-medium mb-2">Recursos Ativos:</h4>
             <ul className="space-y-1">
-              <li>• <strong>Range Requests:</strong> Suporte completo para streaming</li>
-              <li>• <strong>HLS Streaming:</strong> Compatibilidade com todos os dispositivos</li>
-              <li>• <strong>Conversão Automática:</strong> MP4 otimizado</li>
-              <li>• <strong>Watermark Dinâmica:</strong> Logos personalizadas</li>
-              <li>• <strong>Qualidade Adaptativa:</strong> Baseada no plano do usuário</li>
+              <li>• <strong>Player Externo:</strong> Sistema já configurado e testado</li>
+              <li>• <strong>iFrame Seguro:</strong> Incorporação segura e estável</li>
+              <li>• <strong>Sem Erros:</strong> Elimina problemas de compatibilidade</li>
+              <li>• <strong>Performance:</strong> Carregamento otimizado</li>
+              <li>• <strong>Fallback:</strong> Abre em nova aba automaticamente</li>
             </ul>
           </div>
           
@@ -516,20 +518,54 @@ const StreamingPlayerManager: React.FC<StreamingPlayerManagerProps> = ({
               <li>• <strong>Desktop:</strong> Chrome, Firefox, Safari, Edge</li>
               <li>• <strong>Mobile:</strong> iOS Safari, Android Chrome</li>
               <li>• <strong>Smart TV:</strong> WebOS, Tizen, Android TV</li>
-              <li>• <strong>Streaming:</strong> OBS, Streamlabs, FFmpeg</li>
-              <li>• <strong>Formatos:</strong> MP4, HLS, DASH</li>
+              <li>• <strong>Player:</strong> Sistema externo otimizado</li>
+              <li>• <strong>Formatos:</strong> Todos suportados pelo player externo</li>
             </ul>
           </div>
         </div>
 
         <div className="mt-4 p-3 bg-blue-100 rounded-md">
           <p className="text-blue-900 text-sm">
-            <strong>🚀 Sistema Otimizado:</strong> O player utiliza streaming adaptativo com suporte a Range requests, 
-            garantindo reprodução suave mesmo para arquivos grandes. A conversão automática para MP4 garante 
-            compatibilidade máxima com todos os dispositivos.
+            <strong>🚀 Sistema iFrame Otimizado:</strong> O player utiliza o sistema externo já configurado através de iframe, 
+            eliminando problemas de compatibilidade e garantindo reprodução estável. O player externo já possui todos os 
+            recursos necessários e está otimizado para performance.
           </p>
         </div>
       </div>
+
+      {/* Função auxiliar global */}
+      {(() => {
+        const buildExternalPlayerUrl = (videoPath: string) => {
+          if (!videoPath) return '';
+
+          // Se já é uma URL do player, usar como está
+          if (videoPath.includes('play.php') || videoPath.includes('/api/players/iframe')) {
+            return videoPath;
+          }
+
+          // Extrair informações do caminho
+          const cleanPath = videoPath.replace(/^\/+/, '').replace(/^(content\/|streaming\/)?/, '');
+          const pathParts = cleanPath.split('/');
+          
+          if (pathParts.length >= 3) {
+            const userLogin = pathParts[0];
+            const folderName = pathParts[1];
+            const fileName = pathParts[2];
+            
+            // Garantir que é MP4
+            const finalFileName = fileName.endsWith('.mp4') ? fileName : fileName.replace(/\.[^/.]+$/, '.mp4');
+            
+            // Usar domínio correto baseado no ambiente
+            const domain = window.location.hostname === 'localhost' ? 'stmv1.udicast.com' : 'samhost.wcore.com.br';
+            
+            // Construir URL do player externo
+            return `https://${domain}:1443/play.php?login=${userLogin}&video=${folderName}/${finalFileName}`;
+          }
+          
+          return '';
+        };
+        return null;
+      })()}
     </div>
   );
 };

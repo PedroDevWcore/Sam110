@@ -92,6 +92,36 @@ const Playlists: React.FC = () => {
     
     return '';
   };
+  // Função para construir URL do player externo
+  const buildExternalPlayerUrl = (videoPath: string) => {
+    if (!videoPath) return '';
+
+    // Se já é uma URL do player, usar como está
+    if (videoPath.includes('play.php') || videoPath.includes('/api/players/iframe')) {
+      return videoPath;
+    }
+
+    // Extrair informações do caminho
+    const cleanPath = videoPath.replace(/^\/+/, '').replace(/^(content\/|streaming\/)?/, '');
+    const pathParts = cleanPath.split('/');
+    
+    if (pathParts.length >= 3) {
+      const userLogin = pathParts[0];
+      const folderName = pathParts[1];
+      const fileName = pathParts[2];
+      
+      // Garantir que é MP4
+      const finalFileName = fileName.endsWith('.mp4') ? fileName : fileName.replace(/\.[^/.]+$/, '.mp4');
+      
+      // Usar domínio correto baseado no ambiente
+      const domain = window.location.hostname === 'localhost' ? 'stmv1.udicast.com' : 'samhost.wcore.com.br';
+      
+      // Construir URL do player externo
+      return `https://${domain}:1443/play.php?login=${userLogin}&video=${folderName}/${finalFileName}`;
+    }
+    
+    return '';
+  };
   // Modal de confirmação
   const [modalConfirmacao, setModalConfirmacao] = useState({
     aberto: false,
@@ -570,47 +600,9 @@ const Playlists: React.FC = () => {
       const playlistVideos = await response.json();
       const videos: Video[] = playlistVideos.map((item: any) => item.videos);
       
-      if (videos.length === 0) {
-        toast.warning('Esta playlist não possui vídeos');
-        return;
-      }
-      
-      setPlaylistVideosToPlay(videos);
-      setPlaylistPlayerIndex(0);
-      
       // Construir URL do player externo
       const playerUrl = buildExternalPlayerUrl(videos[0].url || '');
       setCurrentVideoUrl(playerUrl);
-      
-      setVideoPlayerModalOpen(true);
-    } catch (error) {
-      console.error('Erro ao carregar playlist:', error);
-      toast.error('Erro ao carregar vídeos da playlist');
-    }
-  };
-
-  const handleVideoEnded = () => {
-    if (playlistPlayerIndex < playlistVideosToPlay.length - 1) {
-      const nextIndex = playlistPlayerIndex + 1;
-      setPlaylistPlayerIndex(nextIndex);
-      
-      // Construir URL do próximo vídeo
-      const nextVideoUrl = buildExternalPlayerUrl(playlistVideosToPlay[nextIndex].url || '');
-      setCurrentVideoUrl(nextVideoUrl);
-    } else {
-      // Repetir playlist do início
-      setPlaylistPlayerIndex(0);
-      
-      // Construir URL do primeiro vídeo
-      const firstVideoUrl = buildExternalPlayerUrl(playlistVideosToPlay[0].url || '');
-      setCurrentVideoUrl(firstVideoUrl);
-    }
-  };
-
-  const goToPreviousVideo = () => {
-    if (playlistPlayerIndex > 0) {
-      const prevIndex = playlistPlayerIndex - 1;
-      setPlaylistPlayerIndex(prevIndex);
       
       // Construir URL do vídeo anterior
       const prevVideoUrl = buildExternalPlayerUrl(playlistVideosToPlay[prevIndex].url || '');
@@ -626,16 +618,6 @@ const Playlists: React.FC = () => {
       // Construir URL do próximo vídeo
       const nextVideoUrl = buildExternalPlayerUrl(playlistVideosToPlay[nextIndex].url || '');
       setCurrentVideoUrl(nextVideoUrl);
-    }
-  };
-
-  // Modal de confirmação
-  function ModalConfirmacao({
-    aberto,
-    onFechar,
-    onConfirmar,
-    titulo,
-    mensagem,
     detalhes,
   }: {
     aberto: boolean;
@@ -917,11 +899,18 @@ const Playlists: React.FC = () => {
                 autoplay={true}
                 controls={true}
                 className="w-full h-full"
-                onError={(error) => {
-                  console.error('Erro no IFrame playlist:', error);
-                  toast.error('Erro ao carregar vídeo');
                 }}
-                onReady={() => {
+                  console.error('Erro no IFrame playlist:', error);
+                  console.log('IFrame playlist pronto');
+                }}
+                onLoad={() => {
+                  console.log('IFrame playlist carregado');
+                  // Auto-avançar após duração do vídeo se disponível
+                  const currentVideo = playlistVideosToPlay[playlistPlayerIndex];
+                  if (currentVideo?.duracao) {
+                    setTimeout(() => {
+                      handleVideoEnded();
+                    }, (currentVideo.duracao * 1000) + 5000); // +5s de margem
                   console.log('IFrame playlist pronto');
                 }}
                 onLoad={() => {

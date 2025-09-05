@@ -1,6 +1,7 @@
 /**
  * Utilitário para construir URLs de vídeo baseadas no padrão fornecido
- * Formato: https://domain:1443/play.php?login=usuario&video=pasta/arquivo.mp4
+ * Formato: https://domain:1443/play.php?login=usuario&video=pasta/arquivo.mp4 (Player Externo)
+ * Novo: Suporte a iFrame para incorporação no painel
  */
 
 export interface VideoUrlParts {
@@ -16,6 +17,7 @@ export class VideoUrlBuilder {
 
   /**
    * Constrói URL direta baseada no padrão fornecido
+   * Agora retorna URL do player externo que já possui o player integrado
    */
   static buildDirectUrl(videoPath: string): string {
     if (!videoPath) return '';
@@ -34,6 +36,12 @@ export class VideoUrlBuilder {
     return `https://${domain}:${this.PORT}/play.php?login=${parts.userLogin}&video=${parts.folderName}/${finalFileName}`;
   }
 
+  /**
+   * Constrói URL para iframe (mesmo que direct, pois o player externo já é otimizado)
+   */
+  static buildIFrameUrl(videoPath: string): string {
+    return this.buildDirectUrl(videoPath);
+  }
   /**
    * Extrai partes do caminho do vídeo
    */
@@ -111,27 +119,45 @@ export class VideoUrlBuilder {
 
   /**
    * Constrói URL para embed/iframe
+   * Agora usa o player externo que já possui todos os recursos
    */
   static buildEmbedUrl(videoPath: string, options: {
     autoplay?: boolean;
     controls?: boolean;
     aspectRatio?: string;
   } = {}): string {
-    const parts = this.parseVideoPath(videoPath);
-    if (!parts) return '';
+    // Para embed, usar a mesma URL direta pois o player externo já é otimizado
+    return this.buildDirectUrl(videoPath);
+  }
 
-    const domain = this.getDomain();
-    const finalFileName = this.ensureMp4Extension(parts.fileName);
-    
-    const params = new URLSearchParams({
-      login: parts.userLogin,
-      video: `${parts.folderName}/${finalFileName}`,
-      ...(options.autoplay && { autoplay: 'true' }),
-      ...(options.controls === false && { controls: 'false' }),
-      ...(options.aspectRatio && { aspectratio: options.aspectRatio })
-    });
+  /**
+   * Constrói código HTML para incorporação via iframe
+   */
+  static buildIFrameCode(videoPath: string, options: {
+    width?: number;
+    height?: number;
+    aspectRatio?: string;
+    allowFullscreen?: boolean;
+  } = {}): string {
+    const url = this.buildDirectUrl(videoPath);
+    if (!url) return '';
 
-    return `https://${domain}:${this.PORT}/play.php?${params.toString()}`;
+    const {
+      width = 640,
+      height = 360,
+      aspectRatio = '16:9',
+      allowFullscreen = true
+    } = options;
+
+    return `<iframe 
+  src="${url}" 
+  width="${width}" 
+  height="${height}" 
+  frameborder="0" 
+  ${allowFullscreen ? 'allowfullscreen' : ''}
+  allow="autoplay; fullscreen; picture-in-picture"
+  style="max-width: 100%; aspect-ratio: ${aspectRatio};">
+</iframe>`;
   }
 }
 
