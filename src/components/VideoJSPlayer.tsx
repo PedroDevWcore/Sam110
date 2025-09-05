@@ -46,183 +46,323 @@ const VideoJSPlayer: React.FC<VideoJSPlayerProps> = ({
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const playerRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [isDisposed, setIsDisposed] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const maxRetries = 3;
+
+  // Cleanup function
+  const cleanupPlayer = () => {
+    if (playerRef.current && !isDisposed) {
+      try {
+        console.log('🧹 Limpando Video.js player...');
+        setIsDisposed(true);
+        
+        // Remove all event listeners first
+        playerRef.current.off();
+        
+        // Pause and reset
+        if (typeof playerRef.current.pause === 'function') {
+          playerRef.current.pause();
+        }
+        
+        // Dispose of the player
+        if (typeof playerRef.current.dispose === 'function') {
+          playerRef.current.dispose();
+        }
+        
+        playerRef.current = null;
+        setIsPlayerReady(false);
+        console.log('✅ Video.js player limpo com sucesso');
+      } catch (error) {
+        console.warn('⚠️ Erro ao limpar Video.js player:', error);
+        // Force cleanup
+        playerRef.current = null;
+        setIsPlayerReady(false);
+      }
+    }
+  };
 
   // Carregar Video.js dinamicamente
   useEffect(() => {
+    let mounted = true;
+    
     const loadVideoJS = async () => {
       // Verificar se Video.js já está carregado
       if (window.videojs) {
-        initializePlayer();
+        if (mounted) {
+          initializePlayer();
+        }
         return;
       }
 
       try {
         // Carregar CSS do Video.js
-        const cssLink = document.createElement('link');
-        cssLink.rel = 'stylesheet';
-        cssLink.href = 'https://vjs.zencdn.net/8.6.1/video-js.css';
-        document.head.appendChild(cssLink);
+        if (!document.querySelector('link[href*="video-js.css"]')) {
+          const cssLink = document.createElement('link');
+          cssLink.rel = 'stylesheet';
+          cssLink.href = 'https://vjs.zencdn.net/8.6.1/video-js.css';
+          document.head.appendChild(cssLink);
+        }
 
         // Carregar JavaScript do Video.js
-        const script = document.createElement('script');
-        script.src = 'https://vjs.zencdn.net/8.6.1/video.min.js';
-        script.onload = () => {
-          // Carregar plugin HLS
-          const hlsScript = document.createElement('script');
-          hlsScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/videojs-contrib-hls/5.15.0/videojs-contrib-hls.min.js';
-          hlsScript.onload = () => {
-            initializePlayer();
+        if (!document.querySelector('script[src*="video.min.js"]')) {
+          const script = document.createElement('script');
+          script.src = 'https://vjs.zencdn.net/8.6.1/video.min.js';
+          script.onload = () => {
+            // Carregar plugin HLS
+            if (!document.querySelector('script[src*="videojs-contrib-hls"]')) {
+              const hlsScript = document.createElement('script');
+              hlsScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/videojs-contrib-hls/5.15.0/videojs-contrib-hls.min.js';
+              hlsScript.onload = () => {
+                if (mounted) {
+                  initializePlayer();
+                }
+              };
+              hlsScript.onerror = () => {
+                if (mounted) {
+                  setError('Erro ao carregar plugin HLS');
+                  setLoading(false);
+                }
+              };
+              document.head.appendChild(hlsScript);
+            } else {
+              if (mounted) {
+                initializePlayer();
+              }
+            }
           };
-          document.head.appendChild(hlsScript);
-        };
-        document.head.appendChild(script);
+          script.onerror = () => {
+            if (mounted) {
+              setError('Erro ao carregar Video.js');
+              setLoading(false);
+            }
+          };
+          document.head.appendChild(script);
+        } else {
+          if (mounted) {
+            initializePlayer();
+          }
+        }
       } catch (error) {
         console.error('Erro ao carregar Video.js:', error);
-        setError('Erro ao carregar player');
+        if (mounted) {
+          setError('Erro ao carregar player');
+          setLoading(false);
+        }
+      }
+    };
+
+    const initializePlayer = () => {
+      if (!videoRef.current || !window.videojs || isDisposed || !mounted) return;
+
+      try {
+        setLoading(true);
+        setError(null);
+        setIsDisposed(false);
+
+        // Ensure the video element is properly attached to DOM
+        if (!videoRef.current.parentNode) {
+          console.warn('⚠️ Video element não está no DOM, aguardando...');
+          setTimeout(() => {
+            if (mounted && !isDisposed) {
+              initializePlayer();
+            }
+          }, 100);
+          return;
+        }
+
+        console.log('🎥 Inicializando Video.js player...');
+
+        const player = window.videojs(videoRef.current, {
+          controls: controls,
+          responsive: true,
+          fluid: true,
+          playbackRates: [0.5, 1, 1.25, 1.5, 2],
+          html5: {
+            hls: {
+              overrideNative: true,
+              enableLowInitialPlaylist: isLive,
+              smoothQualityChange: true,
+              handlePartialData: true
+            },
+            vhs: {
+              overrideNative: true
+            }
+          },
+          liveui: isLive,
+          liveTracker: isLive ? {
+            trackingThreshold: 20,
+            liveTolerance: 15
+          } : false,
+          inactivityTimeout: 0, // Disable inactivity timeout
+          userActions: {
+            hotkeys: true
+          }
+        });
+
+        // Store player reference
+        playerRef.current = player;
+
+        // Event listeners with error handling
+        player.ready(() => {
+          if (!mounted || isDisposed) return;
+          
+          console.log('✅ Video.js player pronto');
+          setIsPlayerReady(true);
+          setLoading(false);
+          setRetryCount(0);
+          
+          if (onReady) {
+            try {
+              onReady();
+            } catch (callbackError) {
+              console.warn('Erro no callback onReady:', callbackError);
+            }
+          }
+          
+          // Configurar fonte inicial se disponível
+          if (src && mounted && !isDisposed) {
+            updatePlayerSource();
+          }
+        });
+
+        player.on('play', () => {
+          if (!mounted || isDisposed) return;
+          console.log('▶️ Video.js play');
+          if (onPlay) {
+            try {
+              onPlay();
+            } catch (callbackError) {
+              console.warn('Erro no callback onPlay:', callbackError);
+            }
+          }
+        });
+
+        player.on('pause', () => {
+          if (!mounted || isDisposed) return;
+          console.log('⏸️ Video.js pause');
+          if (onPause) {
+            try {
+              onPause();
+            } catch (callbackError) {
+              console.warn('Erro no callback onPause:', callbackError);
+            }
+          }
+        });
+
+        player.on('ended', () => {
+          if (!mounted || isDisposed) return;
+          console.log('🔚 Video.js ended');
+          if (onEnded) {
+            try {
+              onEnded();
+            } catch (callbackError) {
+              console.warn('Erro no callback onEnded:', callbackError);
+            }
+          }
+        });
+
+        player.on('error', (e: any) => {
+          if (!mounted || isDisposed) return;
+          
+          console.error('❌ Video.js error:', e);
+          const errorObj = player.error();
+          
+          let errorMessage = 'Erro ao carregar vídeo';
+          if (errorObj) {
+            switch (errorObj.code) {
+              case 1:
+                errorMessage = 'Reprodução abortada';
+                break;
+              case 2:
+                errorMessage = 'Erro de rede';
+                break;
+              case 3:
+                errorMessage = 'Erro de decodificação';
+                break;
+              case 4:
+                errorMessage = 'Formato não suportado';
+                break;
+              default:
+                errorMessage = errorObj.message || 'Erro desconhecido';
+            }
+          }
+          
+          setError(errorMessage);
+          setLoading(false);
+          
+          if (onError) {
+            try {
+              onError(e);
+            } catch (callbackError) {
+              console.warn('Erro no callback onError:', callbackError);
+            }
+          }
+        });
+
+        player.on('loadstart', () => {
+          if (!mounted || isDisposed) return;
+          setLoading(true);
+          setError(null);
+        });
+
+        player.on('canplay', () => {
+          if (!mounted || isDisposed) return;
+          setLoading(false);
+        });
+
+        player.on('waiting', () => {
+          if (!mounted || isDisposed) return;
+          setLoading(true);
+        });
+
+        player.on('playing', () => {
+          if (!mounted || isDisposed) return;
+          setLoading(false);
+        });
+
+      } catch (error) {
+        console.error('Erro ao inicializar Video.js:', error);
+        if (mounted) {
+          setError('Erro ao inicializar player');
+          setLoading(false);
+          
+          // Retry logic
+          if (retryCount < maxRetries) {
+            console.log(`🔄 Tentativa ${retryCount + 1}/${maxRetries} de reinicializar player...`);
+            setRetryCount(prev => prev + 1);
+            setTimeout(() => {
+              if (mounted && !isDisposed) {
+                initializePlayer();
+              }
+            }, 1000 * (retryCount + 1));
+          }
+        }
       }
     };
 
     loadVideoJS();
 
     return () => {
-      if (playerRef.current) {
-        try {
-          playerRef.current.dispose();
-        } catch (error) {
-          console.warn('Erro ao limpar player:', error);
-        }
-      }
+      mounted = false;
+      cleanupPlayer();
     };
-  }, []);
+  }, []); // Only run once on mount
 
   // Atualizar fonte quando src mudar
   useEffect(() => {
-    if (isPlayerReady && playerRef.current && src) {
+    if (isPlayerReady && playerRef.current && src && !isDisposed) {
       updatePlayerSource();
     }
   }, [src, isPlayerReady]);
 
-  const initializePlayer = () => {
-    if (!videoRef.current || !window.videojs) return;
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      const player = window.videojs(videoRef.current, {
-        controls: controls,
-        responsive: true,
-        fluid: true,
-        playbackRates: [0.5, 1, 1.25, 1.5, 2],
-        html5: {
-          hls: {
-            overrideNative: true,
-            enableLowInitialPlaylist: isLive,
-            smoothQualityChange: true,
-            handlePartialData: true
-          },
-          vhs: {
-            overrideNative: true
-          }
-        },
-        liveui: isLive,
-        liveTracker: isLive ? {
-          trackingThreshold: 20,
-          liveTolerance: 15
-        } : false,
-        plugins: {
-          // Configurar plugins se necessário
-        }
-      });
-
-      // Event listeners
-      player.ready(() => {
-        console.log('✅ Video.js player pronto');
-        setIsPlayerReady(true);
-        setLoading(false);
-        if (onReady) onReady();
-        
-        // Configurar fonte inicial
-        if (src) {
-          updatePlayerSource();
-        }
-      });
-
-      player.on('play', () => {
-        console.log('▶️ Video.js play');
-        if (onPlay) onPlay();
-      });
-
-      player.on('pause', () => {
-        console.log('⏸️ Video.js pause');
-        if (onPause) onPause();
-      });
-
-      player.on('ended', () => {
-        console.log('🔚 Video.js ended');
-        if (onEnded) onEnded();
-      });
-
-      player.on('error', (e: any) => {
-        console.error('❌ Video.js error:', e);
-        const errorObj = player.error();
-        
-        let errorMessage = 'Erro ao carregar vídeo';
-        if (errorObj) {
-          switch (errorObj.code) {
-            case 1:
-              errorMessage = 'Reprodução abortada';
-              break;
-            case 2:
-              errorMessage = 'Erro de rede';
-              break;
-            case 3:
-              errorMessage = 'Erro de decodificação';
-              break;
-            case 4:
-              errorMessage = 'Formato não suportado';
-              break;
-            default:
-              errorMessage = errorObj.message || 'Erro desconhecido';
-          }
-        }
-        
-        setError(errorMessage);
-        setLoading(false);
-        if (onError) onError(e);
-      });
-
-      player.on('loadstart', () => {
-        setLoading(true);
-        setError(null);
-      });
-
-      player.on('canplay', () => {
-        setLoading(false);
-      });
-
-      player.on('waiting', () => {
-        setLoading(true);
-      });
-
-      player.on('playing', () => {
-        setLoading(false);
-      });
-
-      playerRef.current = player;
-    } catch (error) {
-      console.error('Erro ao inicializar Video.js:', error);
-      setError('Erro ao inicializar player');
-      setLoading(false);
-    }
-  };
-
   const updatePlayerSource = () => {
-    if (!playerRef.current || !src) return;
+    if (!playerRef.current || !src || isDisposed) return;
 
     try {
       console.log('🎥 Atualizando fonte Video.js:', src);
@@ -243,27 +383,45 @@ const VideoJSPlayer: React.FC<VideoJSPlayerProps> = ({
           sourceConfig.withCredentials = true;
           // Para Video.js, configurar headers via xhr
           playerRef.current.ready(() => {
-            const tech = playerRef.current.tech();
-            if (tech && tech.hls) {
-              tech.hls.xhr.beforeRequest = (options: any) => {
-                options.headers = options.headers || {};
-                options.headers['Authorization'] = `Bearer ${token}`;
-                return options;
-              };
+            if (isDisposed) return;
+            
+            try {
+              const tech = playerRef.current.tech();
+              if (tech && tech.hls) {
+                tech.hls.xhr.beforeRequest = (options: any) => {
+                  options.headers = options.headers || {};
+                  options.headers['Authorization'] = `Bearer ${token}`;
+                  return options;
+                };
+              }
+            } catch (techError) {
+              console.warn('Erro ao configurar headers:', techError);
             }
           });
         }
       }
 
-      playerRef.current.src(sourceConfig);
+      // Clear any existing source first
+      playerRef.current.pause();
+      playerRef.current.src('');
       
-      if (autoplay) {
-        setTimeout(() => {
-          playerRef.current.play().catch((error: any) => {
-            console.warn('Autoplay falhou:', error);
-          });
-        }, 100);
-      }
+      // Wait a bit before setting new source
+      setTimeout(() => {
+        if (playerRef.current && !isDisposed) {
+          playerRef.current.src(sourceConfig);
+          
+          if (autoplay) {
+            setTimeout(() => {
+              if (playerRef.current && !isDisposed) {
+                playerRef.current.play().catch((error: any) => {
+                  console.warn('Autoplay falhou:', error);
+                });
+              }
+            }, 500);
+          }
+        }
+      }, 100);
+      
     } catch (error) {
       console.error('Erro ao atualizar fonte:', error);
       setError('Erro ao carregar vídeo');
@@ -273,8 +431,18 @@ const VideoJSPlayer: React.FC<VideoJSPlayerProps> = ({
   const retry = () => {
     setError(null);
     setLoading(true);
-    if (playerRef.current && src) {
+    setRetryCount(0);
+    
+    if (playerRef.current && src && !isDisposed) {
       updatePlayerSource();
+    } else {
+      // Reinitialize player if needed
+      cleanupPlayer();
+      setTimeout(() => {
+        if (!isDisposed) {
+          window.location.reload(); // Force reload as last resort
+        }
+      }, 1000);
     }
   };
 
@@ -292,8 +460,15 @@ const VideoJSPlayer: React.FC<VideoJSPlayerProps> = ({
     }
   };
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cleanupPlayer();
+    };
+  }, []);
+
   return (
-    <div className={`videojs-player-container relative ${className}`}>
+    <div ref={containerRef} className={`videojs-player-container relative ${className}`}>
       {/* Estatísticas do stream */}
       {streamStats && showStats && (
         <div className="absolute top-4 left-4 z-20 bg-black bg-opacity-80 text-white p-3 rounded-lg text-sm">
@@ -354,7 +529,9 @@ const VideoJSPlayer: React.FC<VideoJSPlayerProps> = ({
         <div className="absolute inset-0 flex items-center justify-center z-30 bg-black bg-opacity-50 rounded-lg">
           <div className="flex flex-col items-center space-y-2">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
-            <span className="text-white text-sm">Carregando Video.js...</span>
+            <span className="text-white text-sm">
+              {retryCount > 0 ? `Tentativa ${retryCount}/${maxRetries}...` : 'Carregando Video.js...'}
+            </span>
           </div>
         </div>
       )}
@@ -408,6 +585,7 @@ const VideoJSPlayer: React.FC<VideoJSPlayerProps> = ({
         data-setup="{}"
         playsInline
         crossOrigin="anonymous"
+        style={{ display: src ? 'block' : 'none' }}
       />
 
       {/* Título do vídeo */}
